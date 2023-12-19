@@ -1,4 +1,4 @@
-import tkinter as tk
+import tkinter
 from tkinter import ttk
 
 GridVarSelect = "Row"
@@ -16,14 +16,14 @@ def NextCoord():
 
 
 # standard skeleton of object-oriented tk-app
-class BaseApp(tk.Frame):
+class BaseApp(tkinter.Frame):
     def __init__(self, master=None):
         super().__init__(master)
         self.grid()
         self.master.title("app title")
 
     def AddDropdown(self, master=None):
-        self.stats_var = tk.StringVar()
+        self.stats_var = tkinter.StringVar()
         self.stats_var.set("Select Stats Type")
         self.stats_dropdown = ttk.Combobox(master, textvariable=self.stats_var,
                                            values=["Rebounding", "Passing"])
@@ -35,21 +35,23 @@ def FetchStats():
 
 
 def CreateButton(parent, text="default", command=FetchStats):
-    newbutton = tk.Button(parent, text=text, command=command)
+    newbutton = tkinter.Button(parent, text=text, command=command)
     row, column = NextCoord()
     newbutton.grid(row=row, column=column, padx=10, pady=10)
     return newbutton
 
 
 if __name__ == "__main__":
-    root = tk.Tk()
+    root = tkinter.Tk()
     window = BaseApp(root)
     window.AddDropdown(root)
     newb = CreateButton(root, "newbutton1", FetchStats)
     def callb(Event):
         CreateButton(root, "newbutton69", FetchStats)
     root.bind("<Key-Return>", callb)
-
+    root.bind("<Key-Right>", callb)
+    root.bind("<Shift-A>", callb)
+    root.mainloop()
 
 # Holy shit I'm epic
 
