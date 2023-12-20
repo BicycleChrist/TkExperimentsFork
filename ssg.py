@@ -17,6 +17,7 @@ CurrentRow = 0
 CurrentColumn = 0
 delta = 1
 
+# TODO: swap the 'axis' logic
 def NextCoord():
     global CurrentRow
     global CurrentColumn
@@ -25,6 +26,9 @@ def NextCoord():
     else:
         CurrentColumn += delta
     return CurrentRow, CurrentColumn
+    # note; the state of delta and GridVarSelect persist
+    # after being modified by CustomNextCoord, and are not reset here
+    # that is the desired behavior.
 
 
 # standard skeleton of object-oriented tk-app
@@ -32,98 +36,93 @@ class BaseApp(tkinter.Frame):
     def __init__(self, master=None):
         super().__init__(master)
         self.grid()
-        self.master.title("app title")
+        self.master.title("Epic Title")
 
-# the Dropdown's label is the key, maps to callback returning it's value
-DropdownGetSelection = {
-
-}
 
 def AddDropdown(master, label, choices):
     nrow, ncol = NextCoord()
-    label = label + str(nrow) + str(ncol)
-    print(label)
-    newsvar = tkinter.StringVar()
-    newsvar.set("static string")
-    choices.append(label)
-    newdropdown = ttk.Combobox(master, textvariable=newsvar, values=choices)
+    choices.append("last choice")
+    newdropdown = ttk.Combobox(master, textvariable=tkinter.StringVar(), values=choices)
+    newdropdown.set(''.join((label,'(', str(nrow),',', str(ncol),')')))
     newdropdown.grid(row=nrow, column=ncol, padx=10, pady=10)
-    #DropdownCallbackMap.update({label: newcallback})
-    #return newdropdown, newsvar
+    return newdropdown
 
-
-def VariadicCallback(targetfunction, **kwargs):
+def VariadicCallback(targetfunction, *args):
     print(targetfunction)
-    print(kwargs)
-    return lambda: targetfunction(**kwargs)
-
-# If you want to "AddDropdown" through a button, it can't take any parameters
-#def CreateCallback(targetfunction, master, label, choices):
-#    button["command"] lambda : AddDropdown(master, label, choices)
+    print(args)
+    #return lambda: targetfunction(*args)  # causes duplicates in CreateDropdown, for some reason
+    return targetfunction(*args)
 
 
 def FetchStats():
     print("pretending to fetch something")
 
 
-def CreateButton(parent, text="default", command=FetchStats, nextcoordmethod=NextCoord):
+def CreateButton(parent, text="default", command=FetchStats, nextcoord=None):
+    if nextcoord:
+        row, column = nextcoord
+    else:
+        row, column = NextCoord()
     newbutton = tkinter.Button(parent, text=text, command=command)
-    row, column = nextcoordmethod()
     newbutton.grid(row=row, column=column, padx=10, pady=10)
     return newbutton
 
 
 if __name__ == "__main__":
-    root = tkinter.Tk(sync=True)
-    # the 'sync' option causes X-server commands to be executed synchronously;
-    # so that errors are reported immediately
-    # can be important for debugging
+    # root = tkinter.Tk(sync=True)  # 'sync' option causes X-server commands to be executed synchronously
+    root = tkinter.Tk()
     window = BaseApp(root)
+
+    AddDropdown(root, label="Select Stats Type", choices=["Rebounding", "Passing"])
+
     newsvar = tkinter.StringVar()
     newsvar.set("static string")
-    newdropdown = ttk.Combobox(root, textvariable=newsvar, values=["Rebounding", "Passing"])
-    newdropdown.grid(row=1, column=1, padx=10, pady=10)
-    AddDropdown(root, label="Select Stats Type", choices=["Rebounding", "Passing"])
-    newcallback = VariadicCallback(AddDropdown, master=root, label="new dropdown", choices=["choice 1", "Choice 2"])
-    CreateButton(root, "create dropdown", newcallback)
+    ttk.Combobox(root, textvariable=newsvar, values=["qwerty", "asdf"]).grid(row=1, column=1, padx=10, pady=10)
+    # you must create a seperate variable to hold the initial string; otherwise it shows up blank
+    # or you could call '.set' on the combobox itself, but then it must be named
 
-    newb = CreateButton(root, "newbutton1", FetchStats)
-    def callb(Event):
-        CreateButton(root, "newbutton69", FetchStats)
+    # the call to VariadicCallback must be marked lambda, especially since it's not returning lambda anymore
+    newCB = lambda: VariadicCallback(AddDropdown, root, "new dropdown", ["choice 1", "Choice 2"])
+    # if it returns lambda instead, then the dropdown menus get 'Last Choice' duplicated
+    # it doesn't make a difference whether you '.copy()' the choices anywhere/everywhere
+    CreateButton(root, "create dropdown", command=newCB)
+    # this one-liner also works:
+    #CreateButton(root, "create dropdown", command=lambda: VariadicCallback(AddDropdown, root, "new dropdown", ["choice 1", "Choice 2"]))
+
+
+    # TODO: turn global variables into parameters
     def CustomNextCoord(negative, axis):
-        print(f"customnextcoord: {negative}, {axis}")
         global delta
         global GridVarSelect
-        oldstate = (delta, GridVarSelect)
+        # don't allow negative coords
+        match (negative, axis, CurrentRow, CurrentColumn):
+            case (True, "Row", 0, _): return (CurrentRow, CurrentColumn)
+            case (True, "Column", _, 0): return (CurrentRow, CurrentColumn)
         if negative:
             delta = -1
         else:
             delta = 1
         GridVarSelect = axis
-        returnvalue = NextCoord()
-        delta, GridVarSelect = oldstate
-        return returnvalue
+        return NextCoord()
 
-    callbackstorage = []
 
-    def specialnewbutton(customfunction, **kwargs):
-        print(f"specialnewbutton with: {kwargs}")
-        newbuttoncallback = lambda: customfunction(**kwargs)
-        callbackstorage.append(newbuttoncallback)
-        otherlambda = lambda event: CreateButton(root, "arrowbuttons", FetchStats, newbuttoncallback)
-        callbackstorage.append(otherlambda)
-        return lambda event: CreateButton(root, "arrowbuttons", FetchStats, newbuttoncallback)
-        #newcallback = lambda: CreateButton(root, "arrowbuttons", FetchStats, customfunction)
+    def ArrowKeyCallback(event):
+        #print(event)
+        # isNegative, axis
+        keysymtable = {
+            'Right': (False, "Column"),
+            'Left':  (True, "Column"),
+            'Up':    (True, "Row"),
+            'Down':  (False, "Row"),
+        }
+        newcoord = CustomNextCoord(*keysymtable[event.keysym])
+        CreateButton(root, event.keysym, command=FetchStats, nextcoord=newcoord)
 
-    def rightcallback(event):
-        customnextcoord = lambda: CustomNextCoord(False, "Column")
-        return CreateButton(root, "rightkey", command=FetchStats, nextcoordmethod=customnextcoord)
+    # assigning callbacks to each arrow key
+    keycodes = [str('<' + ''.join(pair) + '>') for pair in zip(['Key-',]*4, ['Left','Right','Up','Down'])]
+    for keycode in keycodes:
+        root.bind(keycode, ArrowKeyCallback)
 
-    root.bind("<Key-Return>", callb)
-    #root.bind("<Key-Right>", specialnewbutton(CustomNextCoord, negative=False, axis="Row"))
-    #root.bind("<Key-Right>", lambda: CustomNextCoord(True, "Row"))
-    root.bind("<Key-Right>", rightcallback)
-    root.bind("<Shift-A>", callb)
     root.mainloop()
 
 # Holy shit I'm epic
