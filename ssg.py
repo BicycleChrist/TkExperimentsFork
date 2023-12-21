@@ -12,24 +12,35 @@ from tkinter import ttk
 # Combobox, Notebook, Progressbar, Separator, Sizegrip and Treeview
 
 
-GridVarSelect = "Row"
-CurrentRow = 0
+GridAxisSelect = "Row"
 CurrentColumn = 0
+CurrentRow = 0
 delta = 1
 
-# TODO: swap the 'axis' logic
-def NextCoord():
-    global CurrentRow
+# TODO: turn global variables into parameters, or create a class
+# tkinter already has a class 'Grid' that seems to track everything
+def GetNextCoord(axis=None, ndelta=None):
     global CurrentColumn
-    if GridVarSelect == "Row":
-        CurrentRow += delta
-    else:
-        CurrentColumn += delta
-    return CurrentRow, CurrentColumn
-    # note; the state of delta and GridVarSelect persist
-    # after being modified by CustomNextCoord, and are not reset here
-    # that is the desired behavior.
-
+    global CurrentRow
+    global delta
+    global GridAxisSelect
+    if axis is not None: GridAxisSelect = axis
+    if ndelta is not None: delta = ndelta
+    # the row/column logic might seem 'backwards', but it's not.
+    # the selected axis is the one we want to STAY on, so we operate on the other
+    match (delta, GridAxisSelect, CurrentColumn, CurrentRow):
+        # checking to prevent negative coords negative coords
+        case(-1, _, 0, 0): delta = 1
+        # in these cases we modify the delta/axis so that the next autoplace will work
+        case (-1, "Column", _, 0): GridAxisSelect = "Row"; delta = 1;
+        case (-1, "Row", 0, _): GridAxisSelect = "Column"; delta = 1;
+        case (_, "Column", _, _): CurrentRow += delta
+        case (_, "Row", _, _): CurrentColumn += delta
+    #print(CurrentColumn, CurrentRow, GridAxisSelect, delta)
+    return CurrentColumn, CurrentRow
+# note; the state of delta and GridAxis persist after being modified by GetNextCoord
+# that is the desired behavior
+# TODO: prevent overlapping elements
 
 # standard skeleton of object-oriented tk-app
 class BaseApp(tkinter.Frame):
@@ -38,34 +49,27 @@ class BaseApp(tkinter.Frame):
         self.grid()
         self.master.title("Epic Title")
 
-
 def AddDropdown(master, label, choices):
-    nrow, ncol = NextCoord()
+    ncol, nrow = GetNextCoord()
     choices.append("last choice")
     newdropdown = ttk.Combobox(master, textvariable=tkinter.StringVar(), values=choices)
-    newdropdown.set(''.join((label,'(', str(nrow),',', str(ncol),')')))
-    newdropdown.grid(row=nrow, column=ncol, padx=10, pady=10)
-    return newdropdown
+    newdropdown.set(''.join((label,'(', str(ncol),',', str(nrow),')')))
+    newdropdown.grid(column=ncol, row=nrow, padx=10, pady=10)
 
 def VariadicCallback(targetfunction, *args):
-    print(targetfunction)
-    print(args)
     #return lambda: targetfunction(*args)  # causes duplicates in CreateDropdown, for some reason
     return targetfunction(*args)
 
 
-def FetchStats():
-    print("pretending to fetch something")
+def Placeholder():
+    print("pretending to do something")
 
 
-def CreateButton(parent, text="default", command=FetchStats, nextcoord=None):
-    if nextcoord:
-        row, column = nextcoord
-    else:
-        row, column = NextCoord()
+def CreateButton(parent, text="default", command=Placeholder, nextcoord=None):
+    if not nextcoord:
+        nextcoord = GetNextCoord()
     newbutton = tkinter.Button(parent, text=text, command=command)
-    newbutton.grid(row=row, column=column, padx=10, pady=10)
-    return newbutton
+    newbutton.grid(column=nextcoord[0], row=nextcoord[1], padx=10, pady=10)
 
 
 if __name__ == "__main__":
@@ -73,50 +77,32 @@ if __name__ == "__main__":
     root = tkinter.Tk()
     window = BaseApp(root)
 
-    AddDropdown(root, label="Select Stats Type", choices=["Rebounding", "Passing"])
-
-    newsvar = tkinter.StringVar()
-    newsvar.set("static string")
-    ttk.Combobox(root, textvariable=newsvar, values=["qwerty", "asdf"]).grid(row=1, column=1, padx=10, pady=10)
-    # you must create a seperate variable to hold the initial string; otherwise it shows up blank
-    # or you could call '.set' on the combobox itself, but then it must be named
-
     # the call to VariadicCallback must be marked lambda, especially since it's not returning lambda anymore
     newCB = lambda: VariadicCallback(AddDropdown, root, "new dropdown", ["choice 1", "Choice 2"])
     # if it returns lambda instead, then the dropdown menus get 'Last Choice' duplicated
     # it doesn't make a difference whether you '.copy()' the choices anywhere/everywhere
-    CreateButton(root, "create dropdown", command=newCB)
+    CreateButton(root, "more dropdown", command=newCB, nextcoord=(0,0))
     # this one-liner also works:
     #CreateButton(root, "create dropdown", command=lambda: VariadicCallback(AddDropdown, root, "new dropdown", ["choice 1", "Choice 2"]))
+    CreateButton(root, "more button", command=lambda: CreateButton(root, "new"))
 
+    newsvar = tkinter.StringVar()
+    newsvar.set("static string")
+    ttk.Combobox(root, textvariable=newsvar, values=["qwerty", "asdf"]).grid(padx=10, pady=10)
+    # you must create a seperate variable to hold the initial string; otherwise it shows up blank
+    # or you could call '.set' on the combobox itself, but then it must be named
 
-    # TODO: turn global variables into parameters
-    def CustomNextCoord(negative, axis):
-        global delta
-        global GridVarSelect
-        # don't allow negative coords
-        match (negative, axis, CurrentRow, CurrentColumn):
-            case (True, "Row", 0, _): return (CurrentRow, CurrentColumn)
-            case (True, "Column", _, 0): return (CurrentRow, CurrentColumn)
-        if negative:
-            delta = -1
-        else:
-            delta = 1
-        GridVarSelect = axis
-        return NextCoord()
-
+    AddDropdown(root, label="otherbox", choices=["createdby", "AddDropdown()"])
 
     def ArrowKeyCallback(event):
-        #print(event)
-        # isNegative, axis
-        keysymtable = {
-            'Right': (False, "Column"),
-            'Left':  (True, "Column"),
-            'Up':    (True, "Row"),
-            'Down':  (False, "Row"),
+        keysymtable = { # axis, delta
+            'Left':  ("Row", -1),
+            'Right': ("Row", 1),
+            'Up':    ("Column", -1),
+            'Down':  ("Column", 1),
         }
-        newcoord = CustomNextCoord(*keysymtable[event.keysym])
-        CreateButton(root, event.keysym, command=FetchStats, nextcoord=newcoord)
+        newcoord = GetNextCoord(*keysymtable[event.keysym])
+        CreateButton(root, event.keysym, command=Placeholder, nextcoord=newcoord)
 
     # assigning callbacks to each arrow key
     keycodes = [str('<' + ''.join(pair) + '>') for pair in zip(['Key-',]*4, ['Left','Right','Up','Down'])]
@@ -124,6 +110,3 @@ if __name__ == "__main__":
         root.bind(keycode, ArrowKeyCallback)
 
     root.mainloop()
-
-# Holy shit I'm epic
-
