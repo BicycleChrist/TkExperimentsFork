@@ -2,4 +2,4 @@
 .git
 .venv
 reference_files/from_effortscraper
-
+__pycache__
